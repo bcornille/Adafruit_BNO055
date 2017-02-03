@@ -17,11 +17,16 @@
   MIT license, all text above must be included in any redistribution
  ***************************************************************************/
 
-#if ARDUINO >= 100
- #include "Arduino.h"
-#else
- #include "WProgram.h"
-#endif
+//#if ARDUINO >= 100
+// #include "Arduino.h"
+//#else
+// #include "WProgram.h"
+//#endif
+
+#include <pigpio.h>
+#include <thread>
+#include <chrono>
+#include <iostream>
 
 #include <math.h>
 #include <limits.h>
@@ -37,10 +42,26 @@
     @brief  Instantiates a new Adafruit_BNO055 class
 */
 /**************************************************************************/
-Adafruit_BNO055::Adafruit_BNO055(int32_t sensorID, uint8_t address)
+Adafruit_BNO055::Adafruit_BNO055(int32_t sensorID, char *tty)
 {
   _sensorID = sensorID;
-  _address = address;
+  std::cout << "Before serOpen" << std::endl;
+  _handle = serOpen(tty, 115200, 0);
+  std::cout << "After serOpen, handle :" << _handle << std::endl;
+}
+
+/***************************************************************************
+ DESTRUCTOR
+ ***************************************************************************/
+
+/**************************************************************************/
+/*!
+    @brief  Cleans up Adafruit_BNO055 class
+*/
+/**************************************************************************/
+Adafruit_BNO055::~Adafruit_BNO055()
+{
+  serClose(_handle);
 }
 
 /***************************************************************************
@@ -55,18 +76,20 @@ Adafruit_BNO055::Adafruit_BNO055(int32_t sensorID, uint8_t address)
 bool Adafruit_BNO055::begin(adafruit_bno055_opmode_t mode)
 {
   /* Enable I2C */
-  Wire.begin();
+//  Wire.begin();
+
 
   // BNO055 clock stretches for 500us or more!
-#ifdef ESP8266
-  Wire.setClockStretchLimit(1000); // Allow for 1000us of clock stretching
-#endif
+//#ifdef ESP8266
+//  Wire.setClockStretchLimit(1000); // Allow for 1000us of clock stretching
+//#endif
 
   /* Make sure we have the right device */
   uint8_t id = read8(BNO055_CHIP_ID_ADDR);
+  std::cout << "Chip ID: " << (int)id << std::endl;
   if(id != BNO055_ID)
   {
-    delay(1000); // hold on for boot
+    std::this_thread::sleep_for(std::chrono::microseconds(1000)); // hold on for boot
     id = read8(BNO055_CHIP_ID_ADDR);
     if(id != BNO055_ID) {
       return false;  // still not? ok bail
@@ -77,16 +100,16 @@ bool Adafruit_BNO055::begin(adafruit_bno055_opmode_t mode)
   setMode(OPERATION_MODE_CONFIG);
 
   /* Reset */
-  write8(BNO055_SYS_TRIGGER_ADDR, 0x20);
+//  write8(BNO055_SYS_TRIGGER_ADDR, 0x20);
   while (read8(BNO055_CHIP_ID_ADDR) != BNO055_ID)
   {
-    delay(10);
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
   }
-  delay(50);
+  std::this_thread::sleep_for(std::chrono::microseconds(50));
 
   /* Set to normal power mode */
   write8(BNO055_PWR_MODE_ADDR, POWER_MODE_NORMAL);
-  delay(10);
+  std::this_thread::sleep_for(std::chrono::microseconds(10));
 
   write8(BNO055_PAGE_ID_ADDR, 0);
 
@@ -103,16 +126,16 @@ bool Adafruit_BNO055::begin(adafruit_bno055_opmode_t mode)
   /* Configure axis mapping (see section 3.4) */
   /*
   write8(BNO055_AXIS_MAP_CONFIG_ADDR, REMAP_CONFIG_P2); // P0-P7, Default is P1
-  delay(10);
+  std::this_thread::sleep_for(std::chrono::microseconds(10));
   write8(BNO055_AXIS_MAP_SIGN_ADDR, REMAP_SIGN_P2); // P0-P7, Default is P1
-  delay(10);
+  std::this_thread::sleep_for(std::chrono::microseconds(10));
   */
   
   write8(BNO055_SYS_TRIGGER_ADDR, 0x0);
-  delay(10);
+  std::this_thread::sleep_for(std::chrono::microseconds(10));
   /* Set the requested operating mode (see section 3.3) */
   setMode(mode);
-  delay(20);
+  std::this_thread::sleep_for(std::chrono::microseconds(20));
 
   return true;
 }
@@ -126,7 +149,7 @@ void Adafruit_BNO055::setMode(adafruit_bno055_opmode_t mode)
 {
   _mode = mode;
   write8(BNO055_OPR_MODE_ADDR, _mode);
-  delay(30);
+  std::this_thread::sleep_for(std::chrono::microseconds(30));
 }
 
 /**************************************************************************/
@@ -134,23 +157,23 @@ void Adafruit_BNO055::setMode(adafruit_bno055_opmode_t mode)
     @brief  Use the external 32.768KHz crystal
 */
 /**************************************************************************/
-void Adafruit_BNO055::setExtCrystalUse(boolean usextal)
+void Adafruit_BNO055::setExtCrystalUse(bool usextal)
 {
   adafruit_bno055_opmode_t modeback = _mode;
 
   /* Switch to config mode (just in case since this is the default) */
   setMode(OPERATION_MODE_CONFIG);
-  delay(25);
+  std::this_thread::sleep_for(std::chrono::microseconds(25));
   write8(BNO055_PAGE_ID_ADDR, 0);
   if (usextal) {
     write8(BNO055_SYS_TRIGGER_ADDR, 0x80);
   } else {
     write8(BNO055_SYS_TRIGGER_ADDR, 0x00);
   }
-  delay(10);
+  std::this_thread::sleep_for(std::chrono::microseconds(10));
   /* Set the requested operating mode (see section 3.3) */
   setMode(modeback);
-  delay(20);
+  std::this_thread::sleep_for(std::chrono::microseconds(20));
 }
 
 
@@ -207,7 +230,7 @@ void Adafruit_BNO055::getSystemStatus(uint8_t *system_status, uint8_t *self_test
   if (system_error != 0)
     *system_error     = read8(BNO055_SYS_ERR_ADDR);
 
-  delay(200);
+  std::this_thread::sleep_for(std::chrono::microseconds(200));
 }
 
 /**************************************************************************/
@@ -391,7 +414,7 @@ bool Adafruit_BNO055::getEvent(sensors_event_t *event)
   event->version   = sizeof(sensors_event_t);
   event->sensor_id = _sensorID;
   event->type      = SENSOR_TYPE_ORIENTATION;
-  event->timestamp = millis();
+  event->timestamp = std::chrono::system_clock::now();
 
   /* Get a Euler angle sample for orientation */
   imu::Vector<3> euler = getVector(Adafruit_BNO055::VECTOR_EULER);
@@ -433,7 +456,7 @@ bool Adafruit_BNO055::getSensorOffsets(adafruit_bno055_offsets_t &offsets_type)
     {
         adafruit_bno055_opmode_t lastMode = _mode;
         setMode(OPERATION_MODE_CONFIG);
-        delay(25);
+        std::this_thread::sleep_for(std::chrono::microseconds(25));
 
         offsets_type.accel_offset_x = (read8(ACCEL_OFFSET_X_MSB_ADDR) << 8) | (read8(ACCEL_OFFSET_X_LSB_ADDR));
         offsets_type.accel_offset_y = (read8(ACCEL_OFFSET_Y_MSB_ADDR) << 8) | (read8(ACCEL_OFFSET_Y_LSB_ADDR));
@@ -466,7 +489,7 @@ void Adafruit_BNO055::setSensorOffsets(const uint8_t* calibData)
 {
     adafruit_bno055_opmode_t lastMode = _mode;
     setMode(OPERATION_MODE_CONFIG);
-    delay(25);
+    std::this_thread::sleep_for(std::chrono::microseconds(25));
 
     /* A writeLen() would make this much cleaner */
     write8(ACCEL_OFFSET_X_LSB_ADDR, calibData[0]);
@@ -508,7 +531,7 @@ void Adafruit_BNO055::setSensorOffsets(const adafruit_bno055_offsets_t &offsets_
 {
     adafruit_bno055_opmode_t lastMode = _mode;
     setMode(OPERATION_MODE_CONFIG);
-    delay(25);
+    std::this_thread::sleep_for(std::chrono::microseconds(25));
 
     write8(ACCEL_OFFSET_X_LSB_ADDR, (offsets_type.accel_offset_x) & 0x0FF);
     write8(ACCEL_OFFSET_X_MSB_ADDR, (offsets_type.accel_offset_x >> 8) & 0x0FF);
@@ -559,17 +582,56 @@ bool Adafruit_BNO055::isFullyCalibrated(void)
     @brief  Writes an 8 bit value over I2C
 */
 /**************************************************************************/
-bool Adafruit_BNO055::write8(adafruit_bno055_reg_t reg, byte value)
+bool Adafruit_BNO055::write8(adafruit_bno055_reg_t reg, uint8_t value)
 {
-  Wire.beginTransmission(_address);
-  #if ARDUINO >= 100
-    Wire.write((uint8_t)reg);
-    Wire.write((uint8_t)value);
-  #else
-    Wire.send(reg);
-    Wire.send(value);
-  #endif
-  Wire.endTransmission();
+//  Wire.beginTransmission(_address);
+//  #if ARDUINO >= 100
+//    Wire.write((uint8_t)reg);
+//    Wire.write((uint8_t)value);
+//  #else
+//    Wire.send(reg);
+//    Wire.send(value);
+//  #endif
+//  Wire.endTransmission();
+
+  std::cout << "Writing bytes to BNO055 register" << std::endl;
+  serWriteByte(_handle, 0xAA); // Start Byte
+  serWriteByte(_handle, 0x00); // Write Byte
+  serWriteByte(_handle, reg);  // Register Address
+  serWriteByte(_handle, 1);    // Write one Byte
+  serWriteByte(_handle, value);// Write value
+  std::cout << "End writing bytes to BNO055 register" << std::endl;
+
+  while (serDataAvailable(_handle) < 2) {};
+  if (serReadByte(_handle) == 0xEE)
+	  return false;
+  switch (serReadByte(_handle))
+  {
+	  case 0x01 :
+		  return true;
+	  case 0x03 :
+		  return false;
+	  case 0x4 :
+		  return false;
+	  case 0x05 :
+		  return false;
+	  case 0x06 :
+		  return false;
+	  case 0x07 :
+		  return false;
+	  case 0x08 :
+		  return false;
+	  case 0x09 :
+		  return false;
+	  case 0x0A :
+		  return false;
+	  case PI_SER_READ_NO_DATA :
+		  return false;
+	  case PI_SER_READ_FAILED :
+		  return false;
+	  default :
+		  return false;
+  }
 
   /* ToDo: Check for error! */
   return true;
@@ -580,23 +642,46 @@ bool Adafruit_BNO055::write8(adafruit_bno055_reg_t reg, byte value)
     @brief  Reads an 8 bit value over I2C
 */
 /**************************************************************************/
-byte Adafruit_BNO055::read8(adafruit_bno055_reg_t reg )
+uint8_t Adafruit_BNO055::read8(adafruit_bno055_reg_t reg )
 {
-  byte value = 0;
+//  byte value = 0;
+//
+//  Wire.beginTransmission(_address);
+//  #if ARDUINO >= 100
+//    Wire.write((uint8_t)reg);
+//  #else
+//    Wire.send(reg);
+//  #endif
+//  Wire.endTransmission();
+//  Wire.requestFrom(_address, (byte)1);
+//  #if ARDUINO >= 100
+//    value = Wire.read();
+//  #else
+//    value = Wire.receive();
+//  #endif
 
-  Wire.beginTransmission(_address);
-  #if ARDUINO >= 100
-    Wire.write((uint8_t)reg);
-  #else
-    Wire.send(reg);
-  #endif
-  Wire.endTransmission();
-  Wire.requestFrom(_address, (byte)1);
-  #if ARDUINO >= 100
-    value = Wire.read();
-  #else
-    value = Wire.receive();
-  #endif
+  int len = 1;
+  uint8_t value = 0;
+
+  std::cout << "Writing bytes to get message" << std::endl;
+  serWriteByte(_handle, 0xAA); // Start Byte
+  serWriteByte(_handle, 0x01); // Write Byte
+  serWriteByte(_handle, reg);  // Register Address
+  serWriteByte(_handle, len);    // Write one Byte
+  std::cout << "End writing bytes to get message" << std::endl;
+
+  while (serDataAvailable(_handle) < 2) {}
+  switch (serReadByte(_handle)) {
+	  case 0xBB :
+		  len = serReadByte(_handle);
+		  while (serDataAvailable(_handle) < len) {}
+		  value = serReadByte(_handle);
+		  break;
+	  case 0xEE :
+		  value = serReadByte(_handle);
+		  break;
+  }
+  std::cout << "Read value: " << (int)value << std::endl;
 
   return value;
 }
@@ -606,26 +691,45 @@ byte Adafruit_BNO055::read8(adafruit_bno055_reg_t reg )
     @brief  Reads the specified number of bytes over I2C
 */
 /**************************************************************************/
-bool Adafruit_BNO055::readLen(adafruit_bno055_reg_t reg, byte * buffer, uint8_t len)
+bool Adafruit_BNO055::readLen(adafruit_bno055_reg_t reg, uint8_t * buffer, uint8_t len)
 {
-  Wire.beginTransmission(_address);
-  #if ARDUINO >= 100
-    Wire.write((uint8_t)reg);
-  #else
-    Wire.send(reg);
-  #endif
-  Wire.endTransmission();
-  Wire.requestFrom(_address, (byte)len);
+//  Wire.beginTransmission(_address);
+//  #if ARDUINO >= 100
+//    Wire.write((uint8_t)reg);
+//  #else
+//    Wire.send(reg);
+//  #endif
+//  Wire.endTransmission();
+//  Wire.requestFrom(_address, (byte)len);
+//
+//  for (uint8_t i = 0; i < len; i++)
+//  {
+//    #if ARDUINO >= 100
+//      buffer[i] = Wire.read();
+//    #else
+//      buffer[i] = Wire.receive();
+//    #endif
+//  }
 
-  for (uint8_t i = 0; i < len; i++)
-  {
-    #if ARDUINO >= 100
-      buffer[i] = Wire.read();
-    #else
-      buffer[i] = Wire.receive();
-    #endif
-  }
+  int readStatus = 0;
+
+  serWriteByte(_handle, 0xAA); // Start Byte
+  serWriteByte(_handle, 0x01); // Write Byte
+  serWriteByte(_handle, reg);  // Register Address
+  serWriteByte(_handle, len);    // Write one Byte
+
+  while (serDataAvailable(_handle) < 2) {}
+  switch (serReadByte(_handle)) {
+	  case 0xBB :
+		  len = serReadByte(_handle);
+		  while (serDataAvailable(_handle) < len) {}
+		  readStatus = serRead(_handle, (char*)buffer, len);
+		  return true;
+	  case 0xEE :
+		  readStatus = serReadByte(_handle);
+		  return false;
+  }	  
 
   /* ToDo: Check for errors! */
-  return true;
+  return readStatus == 0;
 }
